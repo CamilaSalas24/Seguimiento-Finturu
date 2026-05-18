@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seguimiento Equipo Finturu</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <style>
+    /* ---- Role badges ---- */
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border-radius: 99px;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .3px;
+      white-space: nowrap;
+      margin-top: 3px;
+    }
+
+    .role-badge.ux-ui      { background: #EDE9FE; color: #6D28D9; }
+    .role-badge.frontend   { background: #DBEAFE; color: #1D4ED8; }
+    .role-badge.backend    { background: #D1FAE5; color: #065F46; }
+    .role-badge.qa         { background: #FEF3C7; color: #92400E; }
+
+    /* ---- Member action menu ---- */
+    .member-item-wrap { position: relative; }
+
+    .member-actions-menu {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      z-index: 50;
+      min-width: 160px;
+      overflow: hidden;
+      display: none;
+    }
+
+    .member-actions-menu.open { display: block; }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      padding: 9px 14px;
+      border: none;
+      background: transparent;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--gray-700);
+      cursor: pointer;
+      text-align: left;
+      transition: background var(--transition);
+    }
+
+    .menu-item:hover { background: var(--gray-50); }
+    .menu-item.danger { color: var(--red-600); }
+    .menu-item.danger:hover { background: var(--red-light); }
+
+    .menu-divider { height: 1px; background: var(--gray-100); margin: 2px 0; }
+
+    /* ---- Member more button ---- */
+    .member-more-btn {
+      width: 22px;
+      height: 22px;
+      border: none;
+      background: transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--gray-400);
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+
+    .member-item-wrap:hover .member-more-btn { opacity: 1; }
+    .member-more-btn:hover { background: var(--gray-200); color: var(--navy); }
+
+    /* Role badge in panel header */
+    .member-role-header {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .3px;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+
+    .member-role-header.ux-ui    { background: #EDE9FE; color: #6D28D9; }
+    .member-role-header.frontend { background: #DBEAFE; color: #1D4ED8; }
+    .member-role-header.backend  { background: #D1FAE5; color: #065F46; }
+    .member-role-header.qa       { background: #FEF3C7; color: #92400E; }
+    
+    #loadingOverlay {
+      position: fixed; inset: 0; background: var(--bg-page);
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 16px; z-index: 999; transition: opacity .4s;
+    }
+    #loadingOverlay.hidden { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid var(--gray-200);
+      border-top-color: var(--blue-600); border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-family: 'Sora', sans-serif; font-size: 14px; font-weight: 600; color: var(--gray-500); }
+    #configAlert {
+      display: none; margin-bottom: 20px; padding: 16px 20px;
+      background: #FEF3C7; border: 1.5px solid #FCD34D;
+      border-radius: var(--radius-lg); align-items: flex-start; gap: 12px;
+    }
+    #configAlert.visible { display: flex; }
+    .config-alert-title { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 14px; color: #92400E; }
+    .config-alert-text  { font-size: 13px; color: #78350F; margin-top: 3px; line-height: 1.5; }
+    .config-alert-text code { background: rgba(0,0,0,.08); padding: 1px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+    .connection-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 99px; font-size: 11.5px; font-weight: 600; margin-left: 12px; vertical-align: middle; }
+    .connection-badge.connected    { background: var(--green-light); color: var(--green-600); }
+    .connection-badge.disconnected { background: var(--red-light);   color: var(--red-600); }
+    .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  </style>
+</head>
+<body>
+
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="loading-text">Cargando información</div>
+  </div>
+  
+  <!-- ── Navigation ── -->
+  <nav class="top-nav">
+    <span class="top-nav-brand">Finturu</span>
+    <a href="seguimiento.html" class="active">Seguimiento</a>
+    <a href="bugs.html">Bugs</a>
+    <a href="requerimientos.html">Requerimientos</a>
+  </nav>
+
+  <div class="page-wrapper">
+    
+    <div id="configAlert">
+      <div style="font-size:22px;flex-shrink:0">⚠️</div>
+      <div>
+        <div class="config-alert-title">Firebase no configurado</div>
+        <div class="config-alert-text">Busca <code>FIREBASE_CONFIG</code> en este archivo y reemplaza los valores.<br>
+          Consulta <strong>INSTRUCCIONES_FIREBASE.md</strong> para el paso a paso.
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Header ── -->
+    <header class="page-header">
+      <h1>Seguimiento equipo Finturu
+        <span class="connection-badge disconnected" id="connBadge">
+          <span class="conn-dot"></span> Conectado
+        </span>
+      </h1>
+      <p>Visión general del progreso y actividades del equipo</p>
+    </header>
+
+    <!-- ── Stats ── -->
+    <section class="stats-grid" id="statsGrid"></section>
+
+    <!-- ── Main Layout ── -->
+    <div class="main-layout">
+
+      <!-- Sidebar miembros -->
+      <aside class="members-sidebar">
+        <div class="sidebar-title">Miembros del equipo</div>
+        <div class="member-list" id="memberList"></div>
+        <button class="btn-add-member" onclick="openAddMemberModal()">+ Agregar miembro</button>
+      </aside>
+
+      <!-- Panel de tareas -->
+      <section class="tasks-panel" id="tasksPanel"></section>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════
+       MODAL: Agregar / Editar Tarea
+  ═══════════════════════════════════ -->
+  <div class="modal-overlay" id="taskModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="taskModalTitle">Agregar tarea</h3>
+        <button class="modal-close" onclick="closeTaskModal()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tarea</label>
+        <input id="inputTarea" type="text" class="form-input" placeholder="Nombre de la tarea">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nota</label>
+        <input id="inputNota" type="text" class="form-input" placeholder="Descripción breve o nota">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Duración (días)</label>
+          <input id="inputDuracion" type="number" class="form-input" placeholder="0" min="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Estado</label>
+          <select id="inputEstado" class="form-select">
+            <option value="pendiente">Pendiente</option>
+            <option value="en-proceso">En proceso</option>
+            <option value="completado">Completado</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeTaskModal()">Cancelar</button>
+        <button class="btn-save"   onclick="saveTask()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════
+       MODAL: Agregar / Editar Miembro
+  ═══════════════════════════════════ -->
+  <div class="modal-overlay" id="memberModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="memberModalTitle">Agregar miembro</h3>
+        <button class="modal-close" onclick="closeMemberModal()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nombre</label>
+        <input id="inputMemberName" type="text" class="form-input" placeholder="Nombre del miembro">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Rol</label>
+        <select id="inputMemberRol" class="form-select">
+          <option value="ux-ui">UX / UI</option>
+          <option value="frontend">Frontend</option>
+          <option value="backend">Backend</option>
+          <option value="qa">QA</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Color de avatar</label>
+        <div class="color-options" id="colorOptions"></div>
+        <input type="hidden" id="inputMemberColor" value="#6366F1">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeMemberModal()">Cancelar</button>
+        <button class="btn-save"   onclick="saveMember()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    /* ============================================
+       🔥 FIREBASE CONFIG — rellena con tus datos
+    ============================================ */
+    const FIREBASE_CONFIG = {
+      apiKey:            "AIzaSyBRf_-41CV13ZfzhUPWjh-BBNUtxz7d9vY",
+      authDomain:        "seguimiento-finturu.firebaseapp.com",
+      projectId:         "seguimiento-finturu",
+      storageBucket:     "seguimiento-finturu.firebasestorage.app",
+      messagingSenderId: "476031387996",
+      appId:             "1:476031387996:web:216b1fd27d20bf8036d999"
+    };
+
+    let db      = null;
+    let DOC     = null;
+    let appData = null;
+
+    function isConfigured() {
+      return !Object.values(FIREBASE_CONFIG).some(v => v.includes('PEGA_AQUI'));
+    }
+
+    function initFirebase() {
+      if (!isConfigured()) {
+        document.getElementById('configAlert').classList.add('visible');
+        hideLoading();
+        appData = JSON.parse(localStorage.getItem('finturu_seg_fallback') ||
+                  JSON.stringify(DEFAULT_DATA));
+        updateConnBadge(false);
+        render();
+        return;
+      }
+      try {
+        firebase.initializeApp(FIREBASE_CONFIG);
+        db  = firebase.firestore();
+        DOC = db.collection('tracker').doc('seguimiento');
+        DOC.onSnapshot(snapshot => {
+          appData = snapshot.exists ? snapshot.data()
+                                      : JSON.parse(JSON.stringify(DEFAULT_DATA));
+          if (!snapshot.exists) DOC.set(appData);
+          hideLoading();
+          updateConnBadge(true);
+          render();
+        }, err => {
+          console.error(err);
+          showToast('❌ Error de conexión');
+          updateConnBadge(false);
+          hideLoading();
+        });
+      } catch(e) {
+        console.error(e);
+        showToast('❌ Error al inicializar Firebase');
+        hideLoading();
+      }
+    }
+
+    function saveData(data) {
+      appData = data;
+      if (DOC) {
+        DOC.set(data).catch(() => showToast('❌ Error al guardar'));
+      } else {
+        localStorage.setItem('finturu_seg_fallback', JSON.stringify(data));
+      }
+    }
+
+    function cloneData() {
+      return JSON.parse(JSON.stringify(appData));
+    }
+
+    function hideLoading() {
+      document.getElementById('loadingOverlay').classList.add('hidden');
+    }
+
+    function updateConnBadge(connected) {
+      const b = document.getElementById('connBadge');
+      b.className = `connection-badge ${connected ? 'connected' : 'disconnected'}`;
+      b.innerHTML = `<span class="conn-dot"></span> ${connected ? 'Conectado' : 'Sin conexión'}`;
+    }
+
+    /* ----------------------------------------
+       CONSTANTS
+    ---------------------------------------- */
+    const AVATAR_COLORS = [
+      '#6366F1','#14B8A6','#22C55E','#3B82F6',
+      '#F97316','#EC4899','#8B5CF6','#EAB308'
+    ];
+
+    const ROLES = {
+      'ux-ui':    'UX / UI',
+      'frontend': 'Frontend',
+      'backend':  'Backend',
+      'qa':       'QA'
+    };
+
+    const DEFAULT_DATA = {
+      members: []
+    };
+
+    /* ----------------------------------------
+       STATE
+    ---------------------------------------- */
+    let selectedMemberId = null;
+    let editingTaskId    = null;
+    let editingMemberId  = null;
+    let openMenuId       = null;
+
+    /* ----------------------------------------
+       RENDER PIPELINE
+    ---------------------------------------- */
+    function render() {
+      if (!appData) return;
+      const data = appData;
+      if (!selectedMemberId || !data.members.find(m => m.id === selectedMemberId)) {
+        selectedMemberId = data.members.length > 0 ? data.members[0].id : null;
+      }
+      renderStats(data);
+      renderMembers(data);
+      const member = data.members.find(m => m.id === selectedMemberId);
+      renderTasksPanel(member);
+    }
+
+    /* -- Stats cards -- */
+    function renderStats(data) {
+      const all   = data.members.flatMap(m => m.tasks);
+      const total = all.length;
+      const done  = all.filter(t => t.estado === 'completado').length;
+      const pending = all.filter(t => t.estado === 'pendiente').length;
+      const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+
+      document.getElementById('statsGrid').innerHTML = `
+        <div class="stat-card">
+          <div class="stat-icon">📋</div>
+          <div>
+            <div class="stat-label">Total tareas</div>
+            <div class="stat-value">${total}</div>
+            <div class="stat-unit">tareas</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div>
+            <div class="stat-label">Progreso general</div>
+            <div class="stat-value">${pct}%</div>
+            <div class="stat-unit">completado</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⏳</div>
+          <div>
+            <div class="stat-label">Tareas pendientes</div>
+            <div class="stat-value">${pending}</div>
+            <div class="stat-unit">tareas</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon green-bg">✅</div>
+          <div>
+            <div class="stat-label">Completadas</div>
+            <div class="stat-value">${done}</div>
+            <div class="stat-unit">tareas</div>
+          </div>
+        </div>
+      `;
+    }
+
+    /* -- Members sidebar -- */
+    function renderMembers(data) {
+      document.getElementById('memberList').innerHTML = data.members.map(m => {
+        const total = m.tasks.length;
+        const done  = m.tasks.filter(t => t.estado === 'completado').length;
+        const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+        const rol   = m.rol || 'ux-ui';
+        const rolLabel = ROLES[rol] || rol;
+
+        return `
+          <div class="member-item-wrap">
+            <div class="member-item ${m.id === selectedMemberId ? 'active' : ''}"
+                 onclick="selectMember('${m.id}')">
+              <div class="member-avatar" style="background:${m.color}">${m.name[0].toUpperCase()}</div>
+              <div class="member-info">
+                <div class="member-name">${m.name}</div>
+                <span class="role-badge ${rol}">${rolLabel}</span>
+                <div class="member-progress-text" style="margin-top:4px">${done} de ${total} completadas</div>
+                <div class="member-progress-bar-wrap">
+                  <div class="member-progress-fill" style="width:${pct}%;background:${m.color}"></div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+                <div class="member-percent">${pct}%</div>
+                <button class="member-more-btn"
+                        onclick="toggleMemberMenu(event,'${m.id}')"
+                        title="Opciones">⋮</button>
+              </div>
+            </div>
+
+            <div class="member-actions-menu ${openMenuId === m.id ? 'open' : ''}" id="menu-${m.id}">
+              <button class="menu-item" onclick="openEditMemberModal('${m.id}')">
+                ✏️ Editar nombre / rol / color
+              </button>
+              <div class="menu-divider"></div>
+              <button class="menu-item danger" onclick="confirmDeleteMember('${m.id}')">
+                🗑 Eliminar miembro
+              </button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    /* -- Tasks panel -- */
+    function renderTasksPanel(member) {
+      const panel = document.getElementById('tasksPanel');
+
+      if (!member) {
+        panel.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">👥</div>
+            <div class="empty-state-text">Sin miembros en el equipo</div>
+            <div class="empty-state-sub">Agrega un miembro para comenzar</div>
+          </div>`;
+        return;
+      }
+
+      const total  = member.tasks.length;
+      const done   = member.tasks.filter(t => t.estado === 'completado').length;
+      const days   = member.tasks.reduce((s, t) => s + (parseInt(t.duracion) || 0), 0);
+      const pct    = total > 0 ? Math.round((done / total) * 100) : 0;
+      const rol    = member.rol || 'ux-ui';
+      const rolLabel = ROLES[rol] || rol;
+
+      panel.innerHTML = `
+        <div class="section-header">
+          <div class="section-header-left">
+            <div class="section-accent-bar"></div>
+            <div>
+              <h2 class="section-title">
+                Tareas de ${member.name}
+                <span class="member-role-header ${rol}">${rolLabel}</span>
+              </h2>
+              <p class="section-subtitle">Tareas planeadas y ejecutadas</p>
+            </div>
+          </div>
+          <div class="section-header-right">
+            <span class="badge-primary">${pct}% completado</span>
+            <span class="badge-secondary">${total} tareas · ${days}d total</span>
+          </div>
+        </div>
+
+        <div class="progress-section">
+          <span class="progress-label">Progreso general</span>
+          <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <span class="progress-count">${done} de ${total} completadas</span>
+        </div>
+
+        <div class="timeline-wrapper">${buildTimeline(member.tasks)}</div>
+
+        ${member.tasks.length > 0 ? `
+          <table class="tasks-table">
+            <thead>
+              <tr>
+                <th></th><th></th>
+                <th>Tarea</th>
+                <th>Nota</th>
+                <th>Duración</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${member.tasks.map(t => buildTaskRow(t, member.id)).join('')}
+            </tbody>
+          </table>
+        ` : `
+          <div class="empty-state">
+            <div class="empty-state-icon">📝</div>
+            <div class="empty-state-text">Sin tareas aún</div>
+            <div class="empty-state-sub">Agrega la primera tarea abajo</div>
+          </div>`}
+
+        <button class="btn-add-task" onclick="openTaskModal()">+ Agregar tarea rápida</button>
+      `;
+    }
+
+    /* -- Timeline -- */
+    function buildTimeline(tasks) {
+      if (!tasks.length) return '';
+      const items  = tasks.slice(0, 8);
+      const labels = { 'completado':['done','COMPLETADO'], 'en-proceso':['active','EN PROCESO'], 'pendiente':['pending','PENDIENTE'] };
+
+      return `<div class="timeline">` + items.map((t, i) => {
+        const [cls, txt] = labels[t.estado] || ['pending','PENDIENTE'];
+        const isLast  = i === items.length - 1;
+        const circle  = cls === 'done' ? '✓' : (i + 1);
+        const name    = t.tarea.length > 35 ? t.tarea.slice(0, 35) + '…' : t.tarea;
+        const lineCls = cls === 'done' ? 'done' : cls === 'active' ? 'active' : 'pending';
+        const line    = !isLast ? `<div class="timeline-line ${lineCls}"></div>` : '';
+        return `
+          <div class="timeline-item">
+            <div class="timeline-circle ${cls}">${circle}</div>
+            <div class="timeline-info">
+              <div class="timeline-task-name">${name}</div>
+              <div class="timeline-task-dur">${t.duracion || 0} días</div>
+              <div class="timeline-status ${cls}">${txt}</div>
+            </div>
+          </div>${line}`;
+      }).join('') + `</div>`;
+    }
+
+    /* -- Task row -- */
+    function buildTaskRow(t, memberId) {
+      const done   = t.estado === 'completado';
+      const labels = { 'completado':'COMPLETADO', 'en-proceso':'EN PROCESO', 'pendiente':'PENDIENTE' };
+      return `
+        <tr>
+          <td class="td-drag">⠿</td>
+          <td class="td-check">
+            <input type="checkbox" class="task-checkbox" ${done ? 'checked' : ''}
+              onchange="toggleTask('${memberId}','${t.id}')">
+          </td>
+          <td><span class="task-name ${done ? 'completed' : ''}">${t.tarea}</span></td>
+          <td><span class="task-note">${t.nota || '—'}</span></td>
+          <td><span class="task-duration">${t.duracion || 0} días</span></td>
+          <td><span class="status-badge ${t.estado}">${labels[t.estado] || ''}</span></td>
+          <td>
+            <div class="actions-cell">
+              <button class="action-btn" onclick="openEditTaskModal('${memberId}','${t.id}')" title="Editar">✏️</button>
+              <button class="action-btn ${done ? '' : 'success'}" onclick="toggleTask('${memberId}','${t.id}')" title="${done ? 'Revertir' : 'Completar'}">${done ? '↩' : '✓'}</button>
+              <button class="action-btn danger" onclick="deleteTask('${memberId}','${t.id}')" title="Eliminar">✕</button>
+            </div>
+          </td>
+        </tr>`;
+    }
+
+    /* ----------------------------------------
+       MEMBER MENU
+    ---------------------------------------- */
+    function toggleMemberMenu(e, id) {
+      e.stopPropagation();
+      openMenuId = openMenuId === id ? null : id;
+      render();
+    }
+
+    document.addEventListener('click', () => {
+      if (openMenuId) { openMenuId = null; render(); }
+    });
+
+    /* ----------------------------------------
+       MEMBER CRUD
+    ---------------------------------------- */
+    function selectMember(id) {
+      selectedMemberId = id;
+      openMenuId = null;
+      render();
+    }
+
+    function openAddMemberModal() {
+      editingMemberId = null;
+      document.getElementById('memberModalTitle').textContent = 'Agregar miembro';
+      document.getElementById('inputMemberName').value = '';
+      document.getElementById('inputMemberRol').value  = 'ux-ui';
+      document.getElementById('inputMemberColor').value = AVATAR_COLORS[0];
+      buildColorPicker();
+      document.getElementById('memberModal').classList.add('open');
+      setTimeout(() => document.getElementById('inputMemberName').focus(), 100);
+    }
+
+    function openEditMemberModal(id) {
+      openMenuId = null;
+      const data   = cloneData();
+      const member = data.members.find(m => m.id === id);
+      if (!member) return;
+
+      editingMemberId = id;
+      document.getElementById('memberModalTitle').textContent = 'Editar miembro';
+      document.getElementById('inputMemberName').value  = member.name;
+      document.getElementById('inputMemberRol').value   = member.rol || 'ux-ui';
+      document.getElementById('inputMemberColor').value = member.color;
+      buildColorPicker();
+      document.getElementById('memberModal').classList.add('open');
+      setTimeout(() => document.getElementById('inputMemberName').focus(), 100);
+    }
+
+    function closeMemberModal() {
+      document.getElementById('memberModal').classList.remove('open');
+      editingMemberId = null;
+    }
+
+    function buildColorPicker() {
+      const selected = document.getElementById('inputMemberColor').value;
+      document.getElementById('colorOptions').innerHTML = AVATAR_COLORS.map(c =>
+        `<div class="color-option ${c === selected ? 'selected' : ''}"
+              style="background:${c}" onclick="pickColor('${c}')"></div>`
+      ).join('');
+    }
+
+    function pickColor(c) {
+      document.getElementById('inputMemberColor').value = c;
+      buildColorPicker();
+    }
+
+    function saveMember() {
+      const name  = document.getElementById('inputMemberName').value.trim();
+      const rol   = document.getElementById('inputMemberRol').value;
+      const color = document.getElementById('inputMemberColor').value;
+      if (!name) { showToast('Ingresa un nombre'); return; }
+
+      const data = cloneData();
+
+      if (editingMemberId) {
+        const member = data.members.find(m => m.id === editingMemberId);
+        if (member) { member.name = name; member.rol = rol; member.color = color; }
+        showToast('✅ Miembro actualizado');
+      } else {
+        const newMember = { id: Date.now().toString(), name, rol, color, tasks: [] };
+        data.members.push(newMember);
+        selectedMemberId = newMember.id;
+        showToast('✅ Miembro agregado');
+      }
+
+      saveData(data);
+      closeMemberModal();
+    }
+
+    function confirmDeleteMember(id) {
+      openMenuId = null;
+      const data   = cloneData();
+      const member = data.members.find(m => m.id === id);
+      if (member && confirm(`¿Eliminar a "${member.name}" y todas sus tareas? Esta acción no se puede deshacer.`)) {
+        const updated = { ...data, members: data.members.filter(m => m.id !== id) };
+        saveData(updated);
+        selectedMemberId = updated.members.length > 0 ? updated.members[0].id : null;
+        showToast('🗑 Miembro eliminado');
+      }
+    }
+
+    /* ----------------------------------------
+       TASK CRUD
+    ---------------------------------------- */
+    function openTaskModal() {
+      editingTaskId = null;
+      document.getElementById('taskModalTitle').textContent = 'Agregar tarea';
+      document.getElementById('inputTarea').value    = '';
+      document.getElementById('inputNota').value     = '';
+      document.getElementById('inputDuracion').value = '';
+      document.getElementById('inputEstado').value   = 'pendiente';
+      document.getElementById('taskModal').classList.add('open');
+      setTimeout(() => document.getElementById('inputTarea').focus(), 100);
+    }
+
+    function openEditTaskModal(memberId, taskId) {
+      const data   = cloneData();
+      const member = data.members.find(m => m.id === memberId);
+      const task   = member?.tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      editingTaskId = taskId;
+      document.getElementById('taskModalTitle').textContent = 'Editar tarea';
+      document.getElementById('inputTarea').value    = task.tarea;
+      document.getElementById('inputNota').value     = task.nota || '';
+      document.getElementById('inputDuracion').value = task.duracion || '';
+      document.getElementById('inputEstado').value   = task.estado;
+      document.getElementById('taskModal').classList.add('open');
+      setTimeout(() => document.getElementById('inputTarea').focus(), 100);
+    }
+
+    function closeTaskModal() {
+      document.getElementById('taskModal').classList.remove('open');
+      editingTaskId = null;
+    }
+
+    function saveTask() {
+      const tarea    = document.getElementById('inputTarea').value.trim();
+      const nota     = document.getElementById('inputNota').value.trim();
+      const duracion = parseInt(document.getElementById('inputDuracion').value) || 0;
+      const estado   = document.getElementById('inputEstado').value;
+
+      if (!tarea) { showToast('Ingresa el nombre de la tarea'); return; }
+
+      const data   = cloneData();
+      const member = data.members.find(m => m.id === selectedMemberId);
+      if (!member) return;
+
+      if (editingTaskId) {
+        const task = member.tasks.find(t => t.id === editingTaskId);
+        if (task) Object.assign(task, { tarea, nota, duracion, estado });
+        showToast('✅ Tarea actualizada');
+      } else {
+        member.tasks.push({ id: Date.now().toString(), tarea, nota, duracion, estado });
+        showToast('✅ Tarea agregada');
+      }
+
+      saveData(data);
+      closeTaskModal();
+    }
+
+    function toggleTask(memberId, taskId) {
+      const data   = cloneData();
+      const member = data.members.find(m => m.id === memberId);
+      const task   = member?.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      task.estado = task.estado === 'completado' ? 'pendiente' : 'completado';
+      saveData(data);
+    }
+
+    function deleteTask(memberId, taskId) {
+      const data   = cloneData();
+      const member = data.members.find(m => m.id === memberId);
+      if (!member) return;
+      member.tasks = member.tasks.filter(t => t.id !== taskId);
+      saveData(data);
+      showToast('🗑 Tarea eliminada');
+    }
+
+    /* ----------------------------------------
+       UTILITIES
+    ---------------------------------------- */
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2600);
+    }
+
+    ['taskModal','memberModal'].forEach(id => {
+      document.getElementById(id).addEventListener('click', e => {
+        if (e.target === document.getElementById(id)) {
+          document.getElementById(id).classList.remove('open');
+          editingTaskId = editingMemberId = null;
+        }
+      });
+    });
+
+    document.getElementById('inputTarea').addEventListener('keydown',      e => { if (e.key === 'Enter') saveTask(); });
+    document.getElementById('inputMemberName').addEventListener('keydown', e => { if (e.key === 'Enter') saveMember(); });
+
+    /* ----------------------------------------
+       INIT
+    ---------------------------------------- */
+    initFirebase();
+  </script>
+
+</body>
+</html>

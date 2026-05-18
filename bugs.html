@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bugs Finturu</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ---- Loading ---- */
+    #loadingOverlay {
+      position: fixed; inset: 0; background: var(--bg-page);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; z-index: 999; transition: opacity .4s;
+    }
+    #loadingOverlay.hidden { opacity: 0; pointer-events: none; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--gray-200); border-top-color: var(--blue-600); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-family: 'Sora', sans-serif; font-size: 14px; font-weight: 600; color: var(--gray-500); }
+
+    /* ---- Config alert ---- */
+    #configAlert {
+      display: none; margin-bottom: 20px; padding: 16px 20px;
+      background: #FEF3C7; border: 1.5px solid #FCD34D; border-radius: var(--radius-lg);
+      align-items: flex-start; gap: 12px;
+    }
+    #configAlert.visible { display: flex; }
+    .config-alert-title { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 14px; color: #92400E; }
+    .config-alert-text  { font-size: 13px; color: #78350F; margin-top: 3px; line-height: 1.5; }
+    .config-alert-text code { background: rgba(0,0,0,.08); padding: 1px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+
+    /* ---- Connection badge ---- */
+    .connection-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 99px; font-size: 11.5px; font-weight: 600; margin-left: 12px; vertical-align: middle; }
+    .connection-badge.connected    { background: var(--green-light); color: var(--green-600); }
+    .connection-badge.disconnected { background: var(--red-light); color: var(--red-600); }
+    .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  </style>
+</head>
+<body>
+
+  <!-- Loading -->
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="loading-text">Cargando información</div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="top-nav">
+    <span class="top-nav-brand">Finturu</span>
+    <a href="seguimiento.html">Seguimiento</a>
+    <a href="bugs.html" class="active">Bugs</a>
+    <a href="requerimientos.html">Requerimientos</a>
+  </nav>
+
+  <div class="page-wrapper">
+    <!-- Header -->
+    <div class="page-header-row">
+      <div class="page-header">
+        <h1>
+          Bugs Finturu
+          <span class="connection-badge disconnected" id="connBadge">
+            <span class="conn-dot"></span> Conectado
+          </span>
+        </h1>
+        <p>Seguimiento y control de bugs</p>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <section class="stats-grid stats-grid-5" id="statsGrid"></section>
+
+    <!-- Panel -->
+    <div class="bugs-panel">
+      <div class="tabs-bar">
+        <div class="tabs-nav">
+          <button class="tab-btn active" id="tabWeb"    onclick="setTab('web')">Web</button>
+          <button class="tab-btn" id="tabMobile" onclick="setTab('mobile')" style="display:none">Mobile</button>
+        </div>
+        <div class="tabs-actions">
+          <button class="btn-add-bug" onclick="openBugModal()">+ Agregar bug rápido</button>
+          <button class="btn-icon-ghost" title="Más opciones">⋮</button>
+        </div>
+      </div>
+      <div class="bugs-table-scroll" id="bugsTableWrapper"></div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+
+  <!-- Modal Bug -->
+  <div class="modal-overlay" id="bugModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="bugModalTitle">Agregar bug rápido</h3>
+        <button class="modal-close" onclick="closeBugModal()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Bug / Título</label>
+        <input id="inputTitle" type="text" class="form-input" placeholder="Descripción breve del bug">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Descripcion</label>
+        <textarea id="inputNota" class="form-textarea" placeholder="Contexto, pasos para reproducir…"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Encargado</label>
+          <select id="inputEncargado" class="form-select"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duración (días)</label>
+          <input id="inputDuracion" type="number" class="form-input" placeholder="0" min="1">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Estado</label>
+          <select id="inputEstado" class="form-select">
+            <option value="pendiente">Pendiente</option>
+            <option value="en-proceso">En proceso</option>
+            <option value="critico">Crítico</option>
+            <option value="completado">Completado</option>
+          </select>
+        </div>
+        <!-- NUEVO: Importancia -->
+        <div class="form-group">
+          <label class="form-label">Importancia</label>
+          <select id="inputImportancia" class="form-select">
+            <option value="critica">Crítica</option>
+            <option value="alta">Alta</option>
+            <option value="media" selected>Media</option>
+            <option value="baja">Baja</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Entorno</label>
+          <select id="inputEntorno" class="form-select">
+            <option value="dev">Dev</option>
+            <option value="staging">Staging</option>
+            <option value="produccion">Producción</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Plataforma</label>
+          <select id="inputPlataforma" class="form-select">
+            <option value="web">Web</option>
+            <option value="mobile">Mobile</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Link Jira (ej. FNT-1023)</label>
+          <input id="inputJira" type="text" class="form-input" placeholder="FNT-0000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">URL Evidencia (imagen)</label>
+          <input id="inputEvidencia" type="text" class="form-input" placeholder="https://…">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeBugModal()">Cancelar</button>
+        <button class="btn-save"   onclick="saveBug()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const FIREBASE_CONFIG = {
+      apiKey:            "AIzaSyBRf_-41CV13ZfzhUPWjh-BBNUtxz7d9vY",
+      authDomain:        "seguimiento-finturu.firebaseapp.com",
+      projectId:         "seguimiento-finturu",
+      storageBucket:     "seguimiento-finturu.firebasestorage.app",
+      messagingSenderId: "476031387996",
+      appId:             "1:476031387996:web:216b1fd27d20bf8036d999"
+    };
+
+    const PER_PAGE = 11;
+
+    const ENCARGADOS = [
+      { name:'Miguel Luque'   },
+      { name:'Pablo Perdomo'  },
+      { name:'Camila Riascos' },
+      { name:'Fabia Sabedra'  }
+    ];
+
+    const DEFAULT_BUGS = [];
+
+    /* ============================================
+       FIREBASE INIT
+    ============================================ */
+    let db      = null;
+    let DOC     = null;
+    let appBugs = null;
+
+    function isConfigured() {
+      return !Object.values(FIREBASE_CONFIG).some(v => v.includes('PEGA_AQUI'));
+    }
+
+    function initFirebase() {
+      buildEncargadoSelect();
+
+      if (!isConfigured()) {
+        document.getElementById('configAlert').classList.add('visible');
+        hideLoading();
+        appBugs = JSON.parse(localStorage.getItem('finturu_bugs_fallback') ||
+                  JSON.stringify(DEFAULT_BUGS));
+        updateConnBadge(false);
+        render();
+        return;
+      }
+
+      try {
+        if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+        db  = firebase.firestore();
+        DOC = db.collection('tracker').doc('bugs');
+
+        DOC.onSnapshot(snapshot => {
+          if (snapshot.exists) {
+            appBugs = snapshot.data().items || [];
+          } else {
+            appBugs = JSON.parse(JSON.stringify(DEFAULT_BUGS));
+            DOC.set({ items: appBugs });
+          }
+          hideLoading();
+          updateConnBadge(true);
+          render();
+        }, err => {
+          console.error('Firebase error:', err);
+          showToast('❌ Error de conexión con Firebase');
+          updateConnBadge(false);
+          hideLoading();
+        });
+
+      } catch(e) {
+        console.error(e);
+        showToast('❌ Error al inicializar Firebase');
+        hideLoading();
+      }
+    }
+
+    function saveData(bugs) {
+      appBugs = bugs;
+      if (DOC) {
+        DOC.set({ items: bugs }).catch(() => showToast('❌ Error al guardar en Firebase'));
+      } else {
+        localStorage.setItem('finturu_bugs_fallback', JSON.stringify(bugs));
+      }
+    }
+
+    function hideLoading() { document.getElementById('loadingOverlay').classList.add('hidden'); }
+
+    function updateConnBadge(connected) {
+      const badge = document.getElementById('connBadge');
+      badge.className = `connection-badge ${connected ? 'connected' : 'disconnected'}`;
+      badge.innerHTML = `<span class="conn-dot"></span> ${connected ? 'Conectado' : 'Sin conexión'}`;
+    }
+
+    /* ============================================
+       STATE
+    ============================================ */
+    let currentTab  = 'web';
+    let currentPage = 1;
+    let editingId   = null;
+
+    /* ============================================
+       RENDER
+    ============================================ */
+    function setTab(tab) {
+      currentTab = tab;
+      currentPage = 1;
+      document.getElementById('tabWeb').classList.toggle('active', tab==='web');
+      document.getElementById('tabMobile').classList.toggle('active', tab==='mobile');
+      render();
+    }
+
+    function render() {
+      if (!appBugs) return;
+      renderStats();
+      renderTable();
+    }
+
+    function renderStats() {
+      const total    = appBugs.length;
+      const done     = appBugs.filter(b => b.estado === 'completado').length;
+      const criticos = appBugs.filter(b => b.importancia === 'critica').length;
+      const days     = appBugs.reduce((s, b) => s + (parseInt(b.duracion)||0), 0);
+      const pct      = total > 0 ? Math.round((done / total) * 100) : 0;
+
+      document.getElementById('statsGrid').innerHTML = `
+        <div class="stat-card"><div class="stat-icon">🐛</div><div><div class="stat-label">Total bugs</div><div class="stat-value">${total}</div><div class="stat-unit">bugs</div></div></div>
+        <div class="stat-card"><div class="stat-icon">📊</div><div><div class="stat-label">Progreso general</div><div class="stat-value">${pct}%</div><div class="stat-unit">completado</div></div></div>
+        <div class="stat-card"><div class="stat-icon">📅</div><div><div class="stat-label">Tiempo total estimado</div><div class="stat-value">${days}</div><div class="stat-unit">días</div></div></div>
+        <div class="stat-card"><div class="stat-icon red-bg">🚩</div><div><div class="stat-label">Críticos</div><div class="stat-value">${criticos}</div><div class="stat-unit">bugs</div></div></div>
+        <div class="stat-card"><div class="stat-icon green-bg">✅</div><div><div class="stat-label">Completados</div><div class="stat-value">${done}</div><div class="stat-unit">bugs</div></div></div>`;
+    }
+
+    function renderTable() {
+      const filtered   = appBugs.filter(b => b.plataforma === currentTab);
+      const orden = { critica: 0, alta: 1, media: 2, baja: 3 };
+      filtered.sort((a, b) => (orden[a.importancia] ?? 2) - (orden[b.importancia] ?? 2));
+      const total      = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const start = (currentPage - 1) * PER_PAGE;
+      const end   = Math.min(start + PER_PAGE, total);
+      const paged = filtered.slice(start, end);
+      const statusLabels = { completado:'COMPLETADO', critico:'CRÍTICO', 'en-proceso':'EN PROCESO', pendiente:'PENDIENTE' };
+      const wrapper = document.getElementById('bugsTableWrapper');
+
+      if (total === 0) {
+        wrapper.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🎉</div><div class="empty-state-text">Sin bugs para ${currentTab === 'web' ? 'Web' : 'Mobile'}</div></div>`;
+        document.getElementById('pagination').innerHTML = '';
+        return;
+      }
+
+      wrapper.innerHTML = `
+        <table class="tasks-table">
+          <thead>
+            <tr>
+              <th></th><th></th>
+              <th style="width:140px">Bug</th>
+              <th style="width:260px">Descripción</th>
+              <th>Encargado</th>
+              <th>Duración</th>
+              <th>Estado</th>
+              <th>Importancia</th>
+              <th>Entorno</th>
+              <th>Evidencia</th>
+              <th>Link Jira</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>${paged.map(b => buildBugRow(b, statusLabels)).join('')}</tbody>
+        </table>`;
+
+      const pag = document.getElementById('pagination');
+      pag.innerHTML = `
+        <span class="pagination-info">Mostrando ${start+1} a ${end} de ${total} bugs</span>
+        <div class="pagination-controls">
+          <button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>
+          ${buildPageBtns(currentPage, totalPages)}
+          <button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>›</button>
+        </div>`;
+    }
+
+    function buildBugRow(b, statusLabels) {
+      const done = b.estado === 'completado';
+
+      const evidHtml = b.evidencia
+        ? `<img class="evidence-thumb" src="${b.evidencia}" alt="Evidencia" onerror="this.parentNode.innerHTML='<div class=evidence-placeholder>📎</div>'">`
+        : `<div class="evidence-placeholder" onclick="editEvidencia('${b.id}')" title="Agregar evidencia">+</div>`;
+
+      const jiraHtml = b.jira ? `<span class="jira-link">${b.jira} ↗</span>` : `<span class="jira-link-empty">—</span>`;
+
+      const entornoLabels = { dev:'Dev', staging:'Staging', produccion:'Producción' };
+      const entornoColors = { dev:'#DBEAFE', staging:'#FEF3C7', produccion:'#DCFCE7' };
+      const entornoText   = { dev:'#1D4ED8', staging:'#92400E', produccion:'#15803D' };
+      const ent = b.entorno || 'dev';
+      const entornoHtml = `<span style="background:${entornoColors[ent]};color:${entornoText[ent]};padding:3px 10px;border-radius:99px;font-size:10.5px;font-weight:700">${entornoLabels[ent]}</span>`;
+
+      const importanciaLabels = { critica:'CRÍTICA', alta:'ALTA', media:'MEDIA', baja:'BAJA' };
+      const importanciaColors = { critica:'#FFE4E6', alta:'#FEF3C7', media:'#DBEAFE', baja:'#DCFCE7' };
+      const importanciaText   = { critica:'#BE123C', alta:'#92400E', media:'#1D4ED8', baja:'#15803D' };
+      const imp = b.importancia || 'media';
+      const importanciaHtml = `<span style="background:${importanciaColors[imp]};color:${importanciaText[imp]};padding:3px 10px;border-radius:99px;font-size:10.5px;font-weight:700">${importanciaLabels[imp]}</span>`;
+
+      return `<tr>
+        <td class="td-drag">⠿</td>
+        <td class="td-check"><input type="checkbox" class="task-checkbox" ${done?'checked':''} onchange="toggleBug('${b.id}')"></td>
+        <td><span class="task-name ${done?'completed':''}">${b.bug}</span></td>
+        <td><span class="task-note" style="max-width:260px;display:block">${b.nota||'—'}</span></td>
+        <td><span class="encargado-name">${b.encargado||'—'}</span></td>
+        <td><span class="task-duration">${b.duracion||0} días</span></td>
+        <td><span class="bug-status ${b.estado}">${statusLabels[b.estado]||b.estado.toUpperCase()}</span></td>
+        <td>${importanciaHtml}</td>
+        <td>${entornoHtml}</td>
+        <td>${evidHtml}</td>
+        <td>${jiraHtml}</td>
+        <td><div class="actions-cell">
+          <button class="action-btn" onclick="openEditModal('${b.id}')" title="Editar">✏️</button>
+          <button class="action-btn ${done?'':'success'}" onclick="toggleBug('${b.id}')" title="${done?'Revertir':'Completar'}">${done?'↩':'✓'}</button>
+          <button class="action-btn danger" onclick="deleteBug('${b.id}')" title="Eliminar">✕</button>
+        </div></td>
+      </tr>`;
+    }
+
+    function buildPageBtns(current, total) {
+      const btns = []; let prev = null;
+      for (let i = 1; i <= total; i++) {
+        if (i === 1 || i === total || (i >= current-1 && i <= current+1)) {
+          if (prev && i - prev > 1) btns.push('<span style="padding:0 4px;color:var(--gray-400)">…</span>');
+          btns.push(`<button class="page-btn ${i===current?'active':''}" onclick="goPage(${i})">${i}</button>`);
+          prev = i;
+        }
+      }
+      return btns.join('');
+    }
+
+    function goPage(p) {
+      const total = Math.max(1, Math.ceil(appBugs.filter(b => b.plataforma === currentTab).length / PER_PAGE));
+      if (p < 1 || p > total) return;
+      currentPage = p; renderTable();
+    }
+
+    /* ============================================
+       BUG CRUD
+    ============================================ */
+    function openBugModal() {
+      editingId = null;
+      document.getElementById('bugModalTitle').textContent = 'Agregar bug rápido';
+      ['inputTitle','inputNota','inputJira','inputEvidencia'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('inputDuracion').value    = '';
+      document.getElementById('inputEstado').value      = 'pendiente';
+      document.getElementById('inputImportancia').value = 'media';
+      document.getElementById('inputEntorno').value     = 'dev';
+      document.getElementById('inputPlataforma').value  = currentTab;
+      document.getElementById('bugModal').classList.add('open');
+      setTimeout(() => document.getElementById('inputTitle').focus(), 100);
+    }
+
+    function openEditModal(id) {
+      const bug = appBugs.find(b => b.id === id);
+      if (!bug) return;
+      editingId = id;
+      document.getElementById('bugModalTitle').textContent  = 'Editar bug';
+      document.getElementById('inputTitle').value           = bug.bug;
+      document.getElementById('inputNota').value            = bug.nota || '';
+      document.getElementById('inputEncargado').value       = bug.encargado;
+      document.getElementById('inputDuracion').value        = bug.duracion || '';
+      document.getElementById('inputEstado').value          = bug.estado;
+      document.getElementById('inputImportancia').value     = bug.importancia || 'media';
+      document.getElementById('inputEntorno').value         = bug.entorno || 'dev';
+      document.getElementById('inputPlataforma').value      = bug.plataforma;
+      document.getElementById('inputJira').value            = bug.jira || '';
+      document.getElementById('inputEvidencia').value       = bug.evidencia || '';
+      document.getElementById('bugModal').classList.add('open');
+      setTimeout(() => document.getElementById('inputTitle').focus(), 100);
+    }
+
+    function closeBugModal() { document.getElementById('bugModal').classList.remove('open'); editingId = null; }
+
+    function saveBug() {
+      const bug         = document.getElementById('inputTitle').value.trim();
+      const nota        = document.getElementById('inputNota').value.trim();
+      const encargado   = document.getElementById('inputEncargado').value;
+      const duracion    = parseInt(document.getElementById('inputDuracion').value) || 0;
+      const estado      = document.getElementById('inputEstado').value;
+      const importancia = document.getElementById('inputImportancia').value;
+      const entorno     = document.getElementById('inputEntorno').value;
+      const plataforma  = document.getElementById('inputPlataforma').value;
+      const jira        = document.getElementById('inputJira').value.trim();
+      const evidencia   = document.getElementById('inputEvidencia').value.trim();
+
+      if (!bug) { showToast('Ingresa el título del bug'); return; }
+
+      const bugs = JSON.parse(JSON.stringify(appBugs));
+
+      if (editingId) {
+        const item = bugs.find(b => b.id === editingId);
+        if (item) Object.assign(item, { bug, nota, encargado, duracion, estado, importancia, entorno, plataforma, jira, evidencia });
+        showToast('✅ Bug actualizado');
+      } else {
+        const num = bugs.length > 0 ? Math.max(...bugs.map(b => parseInt(b.id)||0)) + 1 : 1;
+        bugs.push({ id: String(num), bug, nota, encargado, duracion, estado, importancia, entorno, plataforma, jira, evidencia, fecha: new Date().toISOString().slice(0,10) });
+        showToast('✅ Bug reportado');
+      }
+
+      saveData(bugs);
+      closeBugModal();
+    }
+
+    function toggleBug(id) {
+      const bugs = JSON.parse(JSON.stringify(appBugs));
+      const bug  = bugs.find(b => b.id === id);
+      if (!bug) return;
+      bug.estado = bug.estado === 'completado' ? 'pendiente' : 'completado';
+      saveData(bugs);
+    }
+
+    function deleteBug(id) {
+      if (!confirm('¿Eliminar este bug?')) return;
+      saveData(appBugs.filter(b => b.id !== id));
+      showToast('🗑 Bug eliminado');
+    }
+
+    function editEvidencia(id) {
+      const url = prompt('URL de la imagen de evidencia:');
+      if (url === null) return;
+      const bugs = JSON.parse(JSON.stringify(appBugs));
+      const bug  = bugs.find(b => b.id === id);
+      if (bug) { bug.evidencia = url.trim(); saveData(bugs); }
+    }
+
+    /* ============================================
+       UTILITIES
+    ============================================ */
+    function buildEncargadoSelect() {
+      const sel = document.getElementById('inputEncargado');
+      if (sel) sel.innerHTML = ENCARGADOS.map(e => `<option value="${e.name}">${e.name}</option>`).join('');
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2600);
+    }
+
+    document.getElementById('bugModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('bugModal')) closeBugModal();
+    });
+
+    document.getElementById('inputTitle').addEventListener('keydown', e => { if (e.key === 'Enter') saveBug(); });
+
+    initFirebase();
+  </script>
+</body>
+</html>

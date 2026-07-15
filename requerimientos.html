@@ -102,6 +102,7 @@
     <a href="seguimiento.html">Seguimiento</a>
     <a href="bugs.html">Bugs</a>
     <a href="requerimientos.html" class="active">Requerimientos</a>
+    <a href="mejoras.html">Mejoras</a>
   </nav>
 
   <div class="page-wrapper">
@@ -228,7 +229,47 @@
 
   <div class="toast" id="toast"></div>
 
+  <!-- Modal Confirmación (reemplaza confirm() nativo) -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-box confirm-box">
+      <div class="confirm-icon">🗑</div>
+      <p class="confirm-title" id="confirmTitle">Eliminar elemento</p>
+      <p class="confirm-message" id="confirmMessage">Esta acción no se puede deshacer.</p>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeConfirmModal()">Cancelar</button>
+        <button class="btn-danger-solid" id="confirmActionBtn">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    let _confirmCallback = null;
+
+    function askConfirm(message, onConfirm, title = 'Eliminar elemento') {
+      document.getElementById('confirmTitle').textContent = title;
+      document.getElementById('confirmMessage').innerHTML = message;
+      _confirmCallback = onConfirm;
+      document.getElementById('confirmModal').classList.add('open');
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('confirmModal').classList.remove('open');
+      _confirmCallback = null;
+    }
+
+    document.getElementById('confirmActionBtn').addEventListener('click', () => {
+      if (_confirmCallback) _confirmCallback();
+      closeConfirmModal();
+    });
+
+    document.getElementById('confirmModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('confirmModal')) closeConfirmModal();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeConfirmModal();
+    });
+
     /* ============================================
        🔥 FIREBASE CONFIG
     ============================================ */
@@ -612,9 +653,15 @@
 
     function deleteReq(id) {
       openRowMenu = null;
-      if (!confirm('¿Eliminar este requerimiento?')) return;
-      saveData(appReqs.filter(r => r.id !== id));
-      showToast('🗑 Requerimiento eliminado');
+      const req = appReqs.find(r => r.id === id);
+      askConfirm(
+        `Se eliminará <b>"${req ? req.requerimiento : 'este requerimiento'}"</b>. Esta acción no se puede deshacer.`,
+        () => {
+          saveData(appReqs.filter(r => r.id !== id));
+          showToast('🗑 Requerimiento eliminado');
+        },
+        'Eliminar requerimiento'
+      );
     }
 
     /* ============================================
@@ -651,3 +698,4 @@
   </script>
 </body>
 </html>
+

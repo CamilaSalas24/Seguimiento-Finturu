@@ -54,6 +54,7 @@
     <a href="seguimiento.html">Seguimiento</a>
     <a href="bugs.html" class="active">Bugs</a>
     <a href="requerimientos.html">Requerimientos</a>
+    <a href="mejoras.html">Mejoras</a>
   </nav>
 
   <div class="page-wrapper">
@@ -172,7 +173,47 @@
 
   <div class="toast" id="toast"></div>
 
+  <!-- Modal Confirmación (reemplaza confirm() nativo) -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-box confirm-box">
+      <div class="confirm-icon">🗑</div>
+      <p class="confirm-title" id="confirmTitle">Eliminar elemento</p>
+      <p class="confirm-message" id="confirmMessage">Esta acción no se puede deshacer.</p>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeConfirmModal()">Cancelar</button>
+        <button class="btn-danger-solid" id="confirmActionBtn">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    let _confirmCallback = null;
+
+    function askConfirm(message, onConfirm, title = 'Eliminar elemento') {
+      document.getElementById('confirmTitle').textContent = title;
+      document.getElementById('confirmMessage').innerHTML = message;
+      _confirmCallback = onConfirm;
+      document.getElementById('confirmModal').classList.add('open');
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('confirmModal').classList.remove('open');
+      _confirmCallback = null;
+    }
+
+    document.getElementById('confirmActionBtn').addEventListener('click', () => {
+      if (_confirmCallback) _confirmCallback();
+      closeConfirmModal();
+    });
+
+    document.getElementById('confirmModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('confirmModal')) closeConfirmModal();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeConfirmModal();
+    });
+
     const FIREBASE_CONFIG = {
       apiKey:            "AIzaSyBRf_-41CV13ZfzhUPWjh-BBNUtxz7d9vY",
       authDomain:        "seguimiento-finturu.firebaseapp.com",
@@ -193,9 +234,6 @@
 
     const DEFAULT_BUGS = [];
 
-    /* ============================================
-       FIREBASE INIT
-    ============================================ */
     let db      = null;
     let DOC     = null;
     let appBugs = null;
@@ -263,16 +301,10 @@
       badge.innerHTML = `<span class="conn-dot"></span> ${connected ? 'Conectado' : 'Sin conexión'}`;
     }
 
-    /* ============================================
-       STATE
-    ============================================ */
     let currentTab  = 'web';
     let currentPage = 1;
     let editingId   = null;
 
-    /* ============================================
-       RENDER
-    ============================================ */
     function setTab(tab) {
       currentTab = tab;
       currentPage = 1;
@@ -410,9 +442,6 @@
       currentPage = p; renderTable();
     }
 
-    /* ============================================
-       BUG CRUD
-    ============================================ */
     function openBugModal() {
       editingId = null;
       document.getElementById('bugModalTitle').textContent = 'Agregar bug rápido';
@@ -486,9 +515,15 @@
     }
 
     function deleteBug(id) {
-      if (!confirm('¿Eliminar este bug?')) return;
-      saveData(appBugs.filter(b => b.id !== id));
-      showToast('🗑 Bug eliminado');
+      const bug = appBugs.find(b => b.id === id);
+      askConfirm(
+        `Se eliminará <b>"${bug ? bug.bug : 'este bug'}"</b> junto con su historial. Esta acción no se puede deshacer.`,
+        () => {
+          saveData(appBugs.filter(b => b.id !== id));
+          showToast('🗑 Bug eliminado');
+        },
+        'Eliminar bug'
+      );
     }
 
     function editEvidencia(id) {
@@ -498,10 +533,6 @@
       const bug  = bugs.find(b => b.id === id);
       if (bug) { bug.evidencia = url.trim(); saveData(bugs); }
     }
-
-    /* ============================================
-       UTILITIES
-    ============================================ */
     function buildEncargadoSelect() {
       const sel = document.getElementById('inputEncargado');
       if (sel) sel.innerHTML = ENCARGADOS.map(e => `<option value="${e.name}">${e.name}</option>`).join('');

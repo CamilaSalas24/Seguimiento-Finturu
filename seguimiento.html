@@ -148,6 +148,7 @@
     <a href="seguimiento.html" class="active">Seguimiento</a>
     <a href="bugs.html">Bugs</a>
     <a href="requerimientos.html">Requerimientos</a>
+    <a href="mejoras.html">Mejoras</a>
   </nav>
 
   <div class="page-wrapper">
@@ -266,10 +267,47 @@
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
+  <!-- Modal Confirmación (reemplaza confirm() nativo) -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-box confirm-box">
+      <div class="confirm-icon">🗑</div>
+      <p class="confirm-title" id="confirmTitle">Eliminar elemento</p>
+      <p class="confirm-message" id="confirmMessage">Esta acción no se puede deshacer.</p>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeConfirmModal()">Cancelar</button>
+        <button class="btn-danger-solid" id="confirmActionBtn">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    /* ============================================
-       🔥 FIREBASE CONFIG — rellena con tus datos
-    ============================================ */
+    let _confirmCallback = null;
+
+    function askConfirm(message, onConfirm, title = 'Eliminar elemento') {
+      document.getElementById('confirmTitle').textContent = title;
+      document.getElementById('confirmMessage').innerHTML = message;
+      _confirmCallback = onConfirm;
+      document.getElementById('confirmModal').classList.add('open');
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('confirmModal').classList.remove('open');
+      _confirmCallback = null;
+    }
+
+    document.getElementById('confirmActionBtn').addEventListener('click', () => {
+      if (_confirmCallback) _confirmCallback();
+      closeConfirmModal();
+    });
+
+    document.getElementById('confirmModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('confirmModal')) closeConfirmModal();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeConfirmModal();
+    });
+
     const FIREBASE_CONFIG = {
       apiKey:            "AIzaSyBRf_-41CV13ZfzhUPWjh-BBNUtxz7d9vY",
       authDomain:        "seguimiento-finturu.firebaseapp.com",
@@ -282,6 +320,9 @@
     let db      = null;
     let DOC     = null;
     let appData = null;
+    let appBugsExt     = [];
+    let appReqsExt     = [];
+    let appMejorasExt  = [];
 
     function isConfigured() {
       return !Object.values(FIREBASE_CONFIG).some(v => v.includes('PEGA_AQUI'));
@@ -314,6 +355,20 @@
           updateConnBadge(false);
           hideLoading();
         });
+
+        // Solo lectura: bugs, requerimientos y mejoras se muestran aquí pero se editan en su propia vista
+        db.collection('tracker').doc('bugs').onSnapshot(snap => {
+          appBugsExt = snap.exists ? (snap.data().items || []) : [];
+          render();
+        });
+        db.collection('tracker').doc('requerimientos').onSnapshot(snap => {
+          appReqsExt = snap.exists ? (snap.data().items || []) : [];
+          render();
+        });
+        db.collection('tracker').doc('mejoras').onSnapshot(snap => {
+          appMejorasExt = snap.exists ? (snap.data().items || []) : [];
+          render();
+        });
       } catch(e) {
         console.error(e);
         showToast('❌ Error al inicializar Firebase');
@@ -345,8 +400,41 @@
     }
 
     /* ----------------------------------------
-       CONSTANTS
+       BUGS / REQUERIMIENTOS / MEJORAS → tareas reflejadas
+       Solo lectura: se editan en su propia vista, aquí solo se muestran.
     ---------------------------------------- */
+    function mapExternalEstado(estado) {
+      if (estado === 'critico') return 'pendiente';
+      return estado || 'pendiente';
+    }
+
+    function getReflectedTasks(memberName) {
+      const bugs = appBugsExt
+        .filter(b => b.encargado === memberName)
+        .map(b => ({
+          id: 'bug-' + b.id, tarea: b.bug, nota: b.nota, duracion: b.duracion,
+          estado: mapExternalEstado(b.estado), source: 'bug', sourceLabel: 'Bug'
+        }));
+      const reqs = appReqsExt
+        .filter(r => r.encargado === memberName)
+        .map(r => ({
+          id: 'req-' + r.id, tarea: r.requerimiento, nota: r.descripcion, duracion: null,
+          estado: mapExternalEstado(r.estado), source: 'requerimiento', sourceLabel: 'Requerimiento'
+        }));
+      const mejoras = appMejorasExt
+        .filter(m => m.encargado === memberName)
+        .map(m => ({
+          id: 'mejora-' + m.id, tarea: m.mejora, nota: m.descripcion, duracion: null,
+          estado: mapExternalEstado(m.estado), source: 'mejora', sourceLabel: 'Mejora'
+        }));
+      return [...bugs, ...reqs, ...mejoras];
+    }
+
+    function getAllTasks(member) {
+      return [...member.tasks, ...getReflectedTasks(member.name)];
+    }
+
+
     const AVATAR_COLORS = [
       '#6366F1','#14B8A6','#22C55E','#3B82F6',
       '#F97316','#EC4899','#8B5CF6','#EAB308'
@@ -363,17 +451,11 @@
       members: []
     };
 
-    /* ----------------------------------------
-       STATE
-    ---------------------------------------- */
     let selectedMemberId = null;
     let editingTaskId    = null;
     let editingMemberId  = null;
     let openMenuId       = null;
-
-    /* ----------------------------------------
-       RENDER PIPELINE
-    ---------------------------------------- */
+    
     function render() {
       if (!appData) return;
       const data = appData;
@@ -388,7 +470,7 @@
 
     /* -- Stats cards -- */
     function renderStats(data) {
-      const all   = data.members.flatMap(m => m.tasks);
+      const all   = data.members.flatMap(m => getAllTasks(m));
       const total = all.length;
       const done  = all.filter(t => t.estado === 'completado').length;
       const pending = all.filter(t => t.estado === 'pendiente').length;
@@ -433,8 +515,9 @@
     /* -- Members sidebar -- */
     function renderMembers(data) {
       document.getElementById('memberList').innerHTML = data.members.map(m => {
-        const total = m.tasks.length;
-        const done  = m.tasks.filter(t => t.estado === 'completado').length;
+        const allTasks = getAllTasks(m);
+        const total = allTasks.length;
+        const done  = allTasks.filter(t => t.estado === 'completado').length;
         const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
         const rol   = m.rol || 'ux-ui';
         const rolLabel = ROLES[rol] || rol;
@@ -487,9 +570,10 @@
         return;
       }
 
-      const total  = member.tasks.length;
-      const done   = member.tasks.filter(t => t.estado === 'completado').length;
-      const days   = member.tasks.reduce((s, t) => s + (parseInt(t.duracion) || 0), 0);
+      const allTasks = getAllTasks(member);
+      const total  = allTasks.length;
+      const done   = allTasks.filter(t => t.estado === 'completado').length;
+      const days   = allTasks.reduce((s, t) => s + (parseInt(t.duracion) || 0), 0);
       const pct    = total > 0 ? Math.round((done / total) * 100) : 0;
       const rol    = member.rol || 'ux-ui';
       const rolLabel = ROLES[rol] || rol;
@@ -503,7 +587,7 @@
                 Tareas de ${member.name}
                 <span class="member-role-header ${rol}">${rolLabel}</span>
               </h2>
-              <p class="section-subtitle">Tareas planeadas y ejecutadas</p>
+              <p class="section-subtitle">Tareas planeadas y ejecutadas, incluyendo bugs, requerimientos y mejoras asignados</p>
             </div>
           </div>
           <div class="section-header-right">
@@ -518,9 +602,9 @@
           <span class="progress-count">${done} de ${total} completadas</span>
         </div>
 
-        <div class="timeline-wrapper">${buildTimeline(member.tasks)}</div>
+        <div class="timeline-wrapper">${buildTimeline(allTasks)}</div>
 
-        ${member.tasks.length > 0 ? `
+        ${allTasks.length > 0 ? `
           <table class="tasks-table">
             <thead>
               <tr>
@@ -533,7 +617,7 @@
               </tr>
             </thead>
             <tbody>
-              ${member.tasks.map(t => buildTaskRow(t, member.id)).join('')}
+              ${allTasks.map(t => t.source ? buildReflectedRow(t) : buildTaskRow(t, member.id)).join('')}
             </tbody>
           </table>
         ` : `
@@ -597,9 +681,29 @@
         </tr>`;
     }
 
-    /* ----------------------------------------
-       MEMBER MENU
-    ---------------------------------------- */
+    /* -- Reflected row (bug / requerimiento / mejora, solo lectura) -- */
+    function buildReflectedRow(t) {
+      const labels = { 'completado':'COMPLETADO', 'en-proceso':'EN PROCESO', 'pendiente':'PENDIENTE' };
+      const pages  = { bug:'bugs.html', requerimiento:'requerimientos.html', mejora:'mejoras.html' };
+      return `
+        <tr style="opacity:.85">
+          <td class="td-drag">·</td>
+          <td class="td-check"><input type="checkbox" class="task-checkbox" disabled ${t.estado==='completado'?'checked':''}></td>
+          <td>
+            <span class="source-tag ${t.source}">${t.sourceLabel}</span>
+            <span class="task-name">${t.tarea}</span>
+          </td>
+          <td><span class="task-note">${t.nota || '—'}</span></td>
+          <td><span class="task-duration">${t.duracion ? t.duracion + ' días' : '—'}</span></td>
+          <td><span class="status-badge ${t.estado}">${labels[t.estado] || ''}</span></td>
+          <td>
+            <div class="actions-cell">
+              <a class="action-btn" href="${pages[t.source]}" title="Ver en ${t.sourceLabel}">↗</a>
+            </div>
+          </td>
+        </tr>`;
+    }
+
     function toggleMemberMenu(e, id) {
       e.stopPropagation();
       openMenuId = openMenuId === id ? null : id;
@@ -691,17 +795,19 @@
       openMenuId = null;
       const data   = cloneData();
       const member = data.members.find(m => m.id === id);
-      if (member && confirm(`¿Eliminar a "${member.name}" y todas sus tareas? Esta acción no se puede deshacer.`)) {
-        const updated = { ...data, members: data.members.filter(m => m.id !== id) };
-        saveData(updated);
-        selectedMemberId = updated.members.length > 0 ? updated.members[0].id : null;
-        showToast('🗑 Miembro eliminado');
-      }
+      if (!member) return;
+      askConfirm(
+        `Se eliminará a <b>"${member.name}"</b> y todas sus tareas. Esta acción no se puede deshacer.`,
+        () => {
+          const updated = { ...data, members: data.members.filter(m => m.id !== id) };
+          saveData(updated);
+          selectedMemberId = updated.members.length > 0 ? updated.members[0].id : null;
+          showToast('🗑 Miembro eliminado');
+        },
+        'Eliminar miembro'
+      );
     }
 
-    /* ----------------------------------------
-       TASK CRUD
-    ---------------------------------------- */
     function openTaskModal() {
       editingTaskId = null;
       document.getElementById('taskModalTitle').textContent = 'Agregar tarea';
@@ -772,14 +878,21 @@
       const data   = cloneData();
       const member = data.members.find(m => m.id === memberId);
       if (!member) return;
-      member.tasks = member.tasks.filter(t => t.id !== taskId);
-      saveData(data);
-      showToast('🗑 Tarea eliminada');
+      const task = member.tasks.find(t => t.id === taskId);
+      askConfirm(
+        `Se eliminará <b>"${task ? task.tarea : 'esta tarea'}"</b>. Esta acción no se puede deshacer.`,
+        () => {
+          const d = cloneData();
+          const m = d.members.find(m => m.id === memberId);
+          if (!m) return;
+          m.tasks = m.tasks.filter(t => t.id !== taskId);
+          saveData(d);
+          showToast('🗑 Tarea eliminada');
+        },
+        'Eliminar tarea'
+      );
     }
 
-    /* ----------------------------------------
-       UTILITIES
-    ---------------------------------------- */
     function showToast(msg) {
       const t = document.getElementById('toast');
       t.textContent = msg;
@@ -798,10 +911,7 @@
 
     document.getElementById('inputTarea').addEventListener('keydown',      e => { if (e.key === 'Enter') saveTask(); });
     document.getElementById('inputMemberName').addEventListener('keydown', e => { if (e.key === 'Enter') saveMember(); });
-
-    /* ----------------------------------------
-       INIT
-    ---------------------------------------- */
+    
     initFirebase();
   </script>
 

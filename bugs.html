@@ -393,7 +393,7 @@
       const done = b.estado === 'completado';
 
      const evidHtml = b.evidencia
-       ? `<a class="evidence-link" href="${escapeAttr(b.evidencia)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(b.evidencia)}">🔗 ${truncateUrl(b.evidencia)}</a>`
+       ? `<a class="evidence-link" href="${escapeAttr(b.evidencia)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(b.evidencia)}"> ${truncateUrl(b.evidencia)}</a>`
        : `<span class="evidence-empty" onclick="editEvidencia('${b.id}')" title="Agregar evidencia">+ Agregar</span>`;
 
       const jiraHtml = b.jira ? `<span class="jira-link">${b.jira} ↗</span>` : `<span class="jira-link-empty">—</span>`;

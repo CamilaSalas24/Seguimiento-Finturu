@@ -579,30 +579,30 @@ h1, h2, h3, h4 { font-family: 'Sora', sans-serif; }
 
 .encargado-name { font-size: 13px; color: var(--gray-700); font-weight: 500; }
 
-/* ---- Evidence ---- */
-.evidence-thumb {
-  width: 52px;
-  height: 38px;
-  border-radius: 5px;
-  object-fit: cover;
-  border: 1px solid var(--gray-200);
-  display: block;
-  cursor: pointer;
-}
-
-.evidence-placeholder {
-  width: 52px;
-  height: 38px;
-  border: 1.5px dashed var(--gray-300);
-  border-radius: 5px;
-  display: flex;
+/* ---- Evidence (link clickeable) ---- */
+.evidence-link {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: var(--gray-300);
-  font-size: 16px;
-  cursor: pointer;
-  transition: all var(--transition);
+  gap: 4px;
+  font-family: 'Sora', sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--blue-600);
+  text-decoration: none;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.evidence-link:hover { text-decoration: underline; }
+
+.evidence-empty {
+  font-size: 12px;
+  color: var(--gray-300);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.evidence-empty:hover { color: var(--blue-500); }
 
 .evidence-placeholder:hover {
   border-color: var(--blue-500);

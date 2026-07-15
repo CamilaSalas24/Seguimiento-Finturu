@@ -382,13 +382,19 @@
           <button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>›</button>
         </div>`;
     }
+    function truncateUrl(url, max = 26) {
+      return url.length > max ? url.slice(0, max) + '…' : url;
+    }
+    function escapeAttr(str) {
+      return String(str).replace(/"/g, '&quot;');
+    }
 
     function buildBugRow(b, statusLabels) {
       const done = b.estado === 'completado';
 
-      const evidHtml = b.evidencia
-        ? `<img class="evidence-thumb" src="${b.evidencia}" alt="Evidencia" onerror="this.parentNode.innerHTML='<div class=evidence-placeholder>📎</div>'">`
-        : `<div class="evidence-placeholder" onclick="editEvidencia('${b.id}')" title="Agregar evidencia">+</div>`;
+     const evidHtml = b.evidencia
+       ? `<a class="evidence-link" href="${escapeAttr(b.evidencia)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(b.evidencia)}">🔗 ${truncateUrl(b.evidencia)}</a>`
+       : `<span class="evidence-empty" onclick="editEvidencia('${b.id}')" title="Agregar evidencia">+ Agregar</span>`;
 
       const jiraHtml = b.jira ? `<span class="jira-link">${b.jira} ↗</span>` : `<span class="jira-link-empty">—</span>`;
 

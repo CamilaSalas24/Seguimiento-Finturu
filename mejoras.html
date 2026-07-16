@@ -206,6 +206,16 @@
           <option value="completado">Completado</option>
         </select>
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Link Jira (ej. FNT-1023)</label>
+          <input id="inputJira" type="text" class="form-input" placeholder="FNT-1023">
+        </div>
+        <div class="form-group">
+          <label class="form-label">URL Evidencia (diseño, doc, etc.)</label>
+          <input id="inputEvidencia" type="text" class="form-input" placeholder="https://…">
+        </div>
+      </div>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeMejoraModal()">Cancelar</button>
         <button class="btn-save"   onclick="saveMejora()">Guardar</button>
@@ -270,6 +280,7 @@
       if (e.key === 'Escape') closeConfirmModal();
     });
 
+  
     const FIREBASE_CONFIG = {
       apiKey:            "AIzaSyBRf_-41CV13ZfzhUPWjh-BBNUtxz7d9vY",
       authDomain:        "seguimiento-finturu.firebaseapp.com",
@@ -288,6 +299,9 @@
       { name:'Fabia Sabedra'  }
     ];
 
+    /* ============================================
+       FIREBASE INIT
+    ============================================ */
     let db      = null;
     let DOC     = null;
     let appMejoras = null;
@@ -346,10 +360,10 @@
       return `${d}/${m}/${y}`;
     }
 
+
     let currentPage = 1;
     let editingId   = null;
     let openRowMenu = null;
-
 
     function render() {
       if (!appMejoras) return;
@@ -424,6 +438,8 @@
               <th>Fecha inicio</th>
               <th>Fecha final</th>
               <th>Duración</th>
+              <th>Evidencia</th>
+              <th>Link Jira</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -439,11 +455,33 @@
         </div>`;
     }
 
+    function truncateUrl(url, max = 26) {
+      return url.length > max ? url.slice(0, max) + '…' : url;
+    }
+
+    function escapeAttr(str) {
+      return String(str).replace(/"/g, '&quot;');
+    }
+
+    function editEvidencia(id) {
+      const url = prompt('URL de evidencia (diseño, documento, etc.):');
+      if (url === null) return;
+      const items = JSON.parse(JSON.stringify(appMejoras));
+      const item  = items.find(m => m.id === id);
+      if (item) { item.evidencia = url.trim(); saveData(items); }
+    }
+
     function buildRow(r) {
       const done = r.estado === 'completado';
       const prioLabels   = { alta:'Alta', media:'Media', baja:'Baja' };
       const estadoLabels = { completado:'Completado', 'en-proceso':'En proceso', pendiente:'Pendiente' };
       const dias = calcDias(r.fechaInicio, r.fechaFinal);
+
+      const evidHtml = r.evidencia
+        ? `<a class="evidence-link" href="${escapeAttr(r.evidencia)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(r.evidencia)}"> ${truncateUrl(r.evidencia)}</a>`
+        : `<span class="evidence-empty" onclick="editEvidencia('${r.id}')" title="Agregar evidencia">+ Agregar</span>`;
+
+      const jiraHtml = r.jira ? `<span class="jira-link">${r.jira} ↗</span>` : `<span class="jira-link-empty">—</span>`;
 
       return `<tr>
         <td class="td-drag">⠿</td>
@@ -463,6 +501,8 @@
         <td><span class="date-cell">${formatFecha(r.fechaInicio)}</span></td>
         <td><span class="date-cell">${formatFecha(r.fechaFinal)}</span></td>
         <td>${dias !== null ? `<span class="duration-pill">${dias} días</span>` : '<span style="color:var(--gray-300);font-size:12px">—</span>'}</td>
+        <td>${evidHtml}</td>
+        <td>${jiraHtml}</td>
         <td>
           <div class="actions-cell">
             <button class="action-btn" onclick="openViewModal('${r.id}')" title="Ver detalle">👁</button>
@@ -527,6 +567,8 @@
       document.getElementById('inputFechaFinal').value        = '';
       document.getElementById('inputPrioridad').value         = 'media';
       document.getElementById('inputEstado').value            = 'pendiente';
+      document.getElementById('inputJira').value              = '';
+      document.getElementById('inputEvidencia').value         = '';
       document.getElementById('duracionCalculada').textContent = 'Selecciona las fechas para calcular';
       document.getElementById('duracionCalculada').style.color = 'var(--gray-400)';
       document.getElementById('mejoraModal').classList.add('open');
@@ -545,6 +587,8 @@
       document.getElementById('inputFechaFinal').value      = item.fechaFinal || '';
       document.getElementById('inputPrioridad').value       = item.prioridad || 'media';
       document.getElementById('inputEstado').value          = item.estado || 'pendiente';
+      document.getElementById('inputJira').value            = item.jira || '';
+      document.getElementById('inputEvidencia').value       = item.evidencia || '';
       actualizarDuracion();
       document.getElementById('mejoraModal').classList.add('open');
       setTimeout(() => document.getElementById('inputMejora').focus(), 100);
@@ -601,6 +645,8 @@
       const fechaFinal  = document.getElementById('inputFechaFinal').value;
       const prioridad   = document.getElementById('inputPrioridad').value;
       const estado      = document.getElementById('inputEstado').value;
+      const jira        = document.getElementById('inputJira').value.trim();
+      const evidencia   = document.getElementById('inputEvidencia').value.trim();
 
       if (!mejora) { showToast('Ingresa el nombre de la mejora'); return; }
       if (fechaFinal && fechaInicio && fechaFinal < fechaInicio) {
@@ -611,11 +657,11 @@
 
       if (editingId) {
         const item = items.find(m => m.id === editingId);
-        if (item) Object.assign(item, { mejora, descripcion, encargado, fechaInicio, fechaFinal, prioridad, estado });
+        if (item) Object.assign(item, { mejora, descripcion, encargado, fechaInicio, fechaFinal, prioridad, estado, jira, evidencia });
         showToast('✅ Mejora actualizada');
       } else {
         const num = items.length > 0 ? Math.max(...items.map(m => parseInt(m.id)||0)) + 1 : 1;
-        items.push({ id: String(num), mejora, descripcion, encargado, fechaInicio, fechaFinal, prioridad, estado });
+        items.push({ id: String(num), mejora, descripcion, encargado, fechaInicio, fechaFinal, prioridad, estado, jira, evidencia });
         showToast('✅ Mejora agregada');
       }
 
@@ -644,6 +690,7 @@
       );
     }
 
+ 
     function buildEncargadoSelect() {
       const sel = document.getElementById('inputEncargado');
       if (sel) sel.innerHTML = ENCARGADOS.map(e => `<option value="${e.name}">${e.name}</option>`).join('');
@@ -667,6 +714,7 @@
     document.getElementById('inputMejora').addEventListener('keydown', e => { if (e.key === 'Enter') saveMejora(); });
     document.getElementById('inputFechaInicio').addEventListener('change', actualizarDuracion);
     document.getElementById('inputFechaFinal').addEventListener('change',  actualizarDuracion);
+
 
     initFirebase();
   </script>

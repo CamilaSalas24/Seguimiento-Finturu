@@ -206,6 +206,16 @@
           <option value="completado">Completado</option>
         </select>
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Link Jira (ej. FNT-1023)</label>
+          <input id="inputJira" type="text" class="form-input" placeholder="FNT-1023">
+        </div>
+        <div class="form-group">
+          <label class="form-label">URL Evidencia (diseño, doc, etc.)</label>
+          <input id="inputEvidencia" type="text" class="form-input" placeholder="https://…">
+        </div>
+      </div>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeReqModal()">Cancelar</button>
         <button class="btn-save"   onclick="saveReq()">Guardar</button>
@@ -270,9 +280,7 @@
       if (e.key === 'Escape') closeConfirmModal();
     });
 
-    /* ============================================
-       🔥 FIREBASE CONFIG
-    ============================================ */
+   
     const FIREBASE_CONFIG = {
       apiKey:            "AIzaSyBRf_-41CV13ZfzhUPWjh-BBNUtxz7d9vY",
       authDomain:        "seguimiento-finturu.firebaseapp.com",
@@ -291,9 +299,7 @@
       { name:'Fabia Sabedra'  }
     ];
 
-    /* ============================================
-       FIREBASE INIT
-    ============================================ */
+  
     let db      = null;
     let DOC     = null;
     let appReqs = null;
@@ -338,9 +344,7 @@
       b.innerHTML = `<span class="conn-dot"></span> ${connected ? 'Conectado' : 'Sin conexión'}`;
     }
 
-    /* ============================================
-       UTILS: fechas
-    ============================================ */
+ 
     function calcDias(inicio, final) {
       if (!inicio || !final) return null;
       const d1 = new Date(inicio);
@@ -355,16 +359,12 @@
       return `${d}/${m}/${y}`;
     }
 
-    /* ============================================
-       STATE
-    ============================================ */
+    
     let currentPage = 1;
     let editingId   = null;
     let openRowMenu = null;
 
-    /* ============================================
-       RENDER
-    ============================================ */
+    
     function render() {
       if (!appReqs) return;
       renderStats();
@@ -438,6 +438,8 @@
               <th>Fecha inicio</th>
               <th>Fecha final</th>
               <th>Duración</th>
+              <th>Evidencia</th>
+              <th>Link Jira</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -453,11 +455,33 @@
         </div>`;
     }
 
+    function truncateUrl(url, max = 26) {
+      return url.length > max ? url.slice(0, max) + '…' : url;
+    }
+
+    function escapeAttr(str) {
+      return String(str).replace(/"/g, '&quot;');
+    }
+
+    function editEvidencia(id) {
+      const url = prompt('URL de evidencia (diseño, documento, etc.):');
+      if (url === null) return;
+      const items = JSON.parse(JSON.stringify(appReqs));
+      const item  = items.find(r => r.id === id);
+      if (item) { item.evidencia = url.trim(); saveData(items); }
+    }
+
     function buildRow(r) {
       const done = r.estado === 'completado';
       const prioLabels   = { alta:'Alta', media:'Media', baja:'Baja' };
       const estadoLabels = { completado:'Completado', 'en-proceso':'En proceso', pendiente:'Pendiente' };
       const dias = calcDias(r.fechaInicio, r.fechaFinal);
+
+      const evidHtml = r.evidencia
+        ? `<a class="evidence-link" href="${escapeAttr(r.evidencia)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(r.evidencia)}"> ${truncateUrl(r.evidencia)}</a>`
+        : `<span class="evidence-empty" onclick="editEvidencia('${r.id}')" title="Agregar evidencia">+ Agregar</span>`;
+
+      const jiraHtml = r.jira ? `<span class="jira-link">${r.jira} ↗</span>` : `<span class="jira-link-empty">—</span>`;
 
       return `<tr>
         <td class="td-drag">⠿</td>
@@ -477,6 +501,8 @@
         <td><span class="date-cell">${formatFecha(r.fechaInicio)}</span></td>
         <td><span class="date-cell">${formatFecha(r.fechaFinal)}</span></td>
         <td>${dias !== null ? `<span class="duration-pill">${dias} días</span>` : '<span style="color:var(--gray-300);font-size:12px">—</span>'}</td>
+        <td>${evidHtml}</td>
+        <td>${jiraHtml}</td>
         <td>
           <div class="actions-cell">
             <button class="action-btn" onclick="openViewModal('${r.id}')" title="Ver detalle">👁</button>
@@ -522,9 +548,6 @@
       currentPage = p; renderTable();
     }
 
-    /* ============================================
-       ROW MENU
-    ============================================ */
     function toggleRowMenu(e, id) {
       e.stopPropagation();
       openRowMenu = openRowMenu === id ? null : id;
@@ -535,9 +558,7 @@
       if (openRowMenu) { openRowMenu = null; renderTable(); }
     });
 
-    /* ============================================
-       REQ CRUD
-    ============================================ */
+  
     function openReqModal() {
       editingId = null;
       document.getElementById('reqModalTitle').textContent    = 'Agregar requerimiento';
@@ -547,6 +568,8 @@
       document.getElementById('inputFechaFinal').value        = '';
       document.getElementById('inputPrioridad').value         = 'media';
       document.getElementById('inputEstado').value            = 'pendiente';
+      document.getElementById('inputJira').value              = '';
+      document.getElementById('inputEvidencia').value         = '';
       document.getElementById('duracionCalculada').textContent = 'Selecciona las fechas para calcular';
       document.getElementById('duracionCalculada').style.color = 'var(--gray-400)';
       document.getElementById('reqModal').classList.add('open');
@@ -565,6 +588,8 @@
       document.getElementById('inputFechaFinal').value      = req.fechaFinal || '';
       document.getElementById('inputPrioridad').value       = req.prioridad || 'media';
       document.getElementById('inputEstado').value          = req.estado || 'pendiente';
+      document.getElementById('inputJira').value            = req.jira || '';
+      document.getElementById('inputEvidencia').value       = req.evidencia || '';
       actualizarDuracion();
       document.getElementById('reqModal').classList.add('open');
       setTimeout(() => document.getElementById('inputReq').focus(), 100);
@@ -621,6 +646,8 @@
       const fechaFinal    = document.getElementById('inputFechaFinal').value;
       const prioridad     = document.getElementById('inputPrioridad').value;
       const estado        = document.getElementById('inputEstado').value;
+      const jira          = document.getElementById('inputJira').value.trim();
+      const evidencia     = document.getElementById('inputEvidencia').value.trim();
 
       if (!requerimiento) { showToast('Ingresa el nombre del requerimiento'); return; }
       if (fechaFinal && fechaInicio && fechaFinal < fechaInicio) {
@@ -631,11 +658,11 @@
 
       if (editingId) {
         const item = reqs.find(r => r.id === editingId);
-        if (item) Object.assign(item, { requerimiento, descripcion, encargado, fechaInicio, fechaFinal, prioridad, estado });
+        if (item) Object.assign(item, { requerimiento, descripcion, encargado, fechaInicio, fechaFinal, prioridad, estado, jira, evidencia });
         showToast('✅ Requerimiento actualizado');
       } else {
         const num = reqs.length > 0 ? Math.max(...reqs.map(r => parseInt(r.id)||0)) + 1 : 1;
-        reqs.push({ id: String(num), requerimiento, descripcion, encargado, fechaInicio, fechaFinal, prioridad, estado });
+        reqs.push({ id: String(num), requerimiento, descripcion, encargado, fechaInicio, fechaFinal, prioridad, estado, jira, evidencia });
         showToast('✅ Requerimiento agregado');
       }
 
@@ -664,9 +691,7 @@
       );
     }
 
-    /* ============================================
-       UTILITIES
-    ============================================ */
+
     function buildEncargadoSelect() {
       const sel = document.getElementById('inputEncargado');
       if (sel) sel.innerHTML = ENCARGADOS.map(e => `<option value="${e.name}">${e.name}</option>`).join('');
@@ -691,11 +716,7 @@
     document.getElementById('inputFechaInicio').addEventListener('change', actualizarDuracion);
     document.getElementById('inputFechaFinal').addEventListener('change',  actualizarDuracion);
 
-    /* ============================================
-       INIT
-    ============================================ */
     initFirebase();
   </script>
 </body>
 </html>
-
